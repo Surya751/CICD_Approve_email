@@ -1,0 +1,83 @@
+name: Deploy to S3 with Manual Approval
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
+
+env:
+  AWS_REGION: ap-south-1  # Change to your region
+  S3_BUCKET: cicd07bucket  # Change to your bucket name
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js (optional - adjust based on your project)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install dependencies (optional - adjust based on your project)
+        run: |
+          # npm install
+          # npm run build
+          echo "Build completed"
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-files
+          path: |
+            .
+            !node_modules
+            !.git
+          retention-days: 1
+
+  approve:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: production
+    
+    steps:
+      - name: Wait for approval
+        run: echo "Deployment approved! Proceeding to deploy..."
+
+  deploy:
+    name: Deploy to S3
+    runs-on: ubuntu-latest
+    needs: approve
+    
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-files
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Deploy to S3
+        run: |
+          aws s3 sync . s3://${{ env.S3_BUCKET }} \
+            --exclude ".git/*" \
+            --exclude ".github/*" \
+            --exclude "node_modules/*" \
+            --delete
+      
+      - name: Deployment complete
+        run: |
+          echo "✅ Deployment to S3 completed successfully!"
+          echo "Bucket: s3://${{ env.S3_BUCKET }}"
